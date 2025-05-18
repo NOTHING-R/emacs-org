@@ -16,10 +16,18 @@
 - [[#dired][DIRED]]
 - [[#evil-mode][Evil Mode]]
 - [[#evil-for-org][EVIL FOR ORG]]
+- [[#exwm][EXWM]]
+  - [[#exwm-main][EXWM MAIN]]
+  - [[#exwm-display][EXWM DISPLAY]]
+  - [[#exwm-extra-settings][EXWM EXTRA SETTINGS]]
 - [[#flycheck][FLYCHECK]]
 - [[#general-keybindings][GENERAL KEYBINDINGS]]
 - [[#icons-and-fonts][ICONS AND FONTS]]
 - [[#ivy-counsel][IVY (COUNSEL)]]
+- [[#ivy-post-frame][IVY POST FRAME]]
+- [[#keybinding][KEYBINDING]]
+  - [[#for-emacs][FOR EMACS]]
+  - [[#for-exwm][FOR EXWM]]
 - [[#minibuffer-escape][MINIBUFFER ESCAPE]]
 - [[#minibuffer-promt-incrise][MINIBUFFER PROMT INCRISE]]
 - [[#neotree][NEOTREE]]
@@ -326,6 +334,97 @@ This package implements hiding or abbreviation of the modeline displays (lighter
   (define-key evil-motion-state-map (kbd "TAB") nil))
 ;; Setting RETURN key in org-mode to follow links
   (setq org-return-follows-link  t)
+#+end_src
+
+* EXWM
+** EXWM MAIN
+#+begin_src emacs-lisp
+(require 'exwm)
+;; Set the initial workspace number.
+(setq exwm-workspace-number 10)
+;; Make class name the buffer name.
+(add-hook 'exwm-update-class-hook
+  (lambda () (exwm-workspace-rename-buffer exwm-class-name)))
+;; Global keybindings.
+(setq exwm-input-global-keys
+      `(([?\M-r] . exwm-reset) ;; s-r: Reset (to line-mode).
+        ([?\M-n] . exwm-workspace-switch) ;; s-w: Switch workspace.
+        ([?\M-&] . (lambda (cmd) ;; s-&: Launch application.
+                     (interactive (list (read-shell-command "$ ")))
+                     (start-process-shell-command cmd nil cmd)))
+        ;; s-N: Switch to certain workspace.
+        ,@(mapcar (lambda (i)
+                    `(,(kbd (format "M-%d" i)) .
+                      (lambda ()
+                        (interactive)
+                        (exwm-workspace-switch-create ,i))))
+                  (number-sequence 0 9))))
+;; Enable EXWM
+(exwm-enable)
+
+(add-hook 'exwm-manage-finish-hook
+          (lambda ()
+            (when (and exwm-class-name
+                       (string= exwm-class-name "Firefox"))
+              (exwm-input-set-local-simulation-keys nil))))
+
+(require 'exwm-systemtray)
+(exwm-systemtray-mode 1)
+#+end_src
+** EXWM DISPLAY 
+#+begin_src emacs-lisp
+ (setq X11_SCREEN_LIST '("eDP-1" "DP-3"))
+
+  ;; xrandr --mode for each screen in X11_SCREEN_LIST
+  (setq X11_SCREEN_MODE_LIST '("1680x1050" "3840x1600"))
+
+  ;; xrandr --rate for each screen in X11_SCREEN_LIST
+  (setq X11_SCREEN_RATE_LIST '("59.95" "59.99"))
+
+  ;; How screens are arranged from left to right. Vertical order, and "--same-as" not yet implemented.
+  (setq X11_SCREEN_ORDER_LIST '("DP-3" "eDP-1"))
+
+  ;; X11 screens (graphics outputs) that should always be explicitly turned off, if available.
+  (setq X11_SCREEN_DISABLED_LIST '("DP-2"))
+
+  ;; Primary X11 screen, if available
+  (setq X11_SCREEN_PREFERRED "DP-3")
+  ;; (setq X11_SCREEN_PREFERRED "eDP-1")
+
+  ;; If X11_SCREEN_USE_ALL_AVAILABLE="yes" then use all available screens in X11_SCREEN_LIST:
+  ;; - X11_SCREEN_PREFERRED is primary, if available
+  ;; - If X11_SCREEN_PREFERRED is unavailable, primary is first available screen in X11_SCREEN_LIST.
+  ;; Otherwise use only one:
+  ;; - X11_SCREEN_PREFERRED if available
+  ;; - If X11_SCREEN_PREFERRED is unavailable then use first available screen in X11_SCREEN_LIST.
+  (setq X11_SCREEN_USE_ALL_AVAILABLE t)
+  ;; (setq X11_SCREEN_USE_ALL_AVAILABLE nil)
+
+  ;; Argument value for "xrandr --dpi", i.e. Dots Per Inch. This is for the X11 DISPLAY, i.e. used for all screens.
+  (setq X11_DISPLAY_DPI 106)
+
+  ;; List of pairs "workspace-number screen"
+  ;; Used to construct exwm-randr-workspace-monitor-plist in emacs.
+  ;; If a screen in this list is unavailable, the workspace will be mapped to the primary screen.
+  (setq EXWM_WORKSPACE_LIST '((1 . "eDP-1") (3 . "eDP-1")))
+  ;; (setq EXWM_WORKSPACE_LIST '((1 . "DP-3") (3 . "DP-3")))
+#+end_src
+** EXWM EXTRA SETTINGS
+#+begin_src emacs-lisp
+(add-to-list 'default-frame-alist '(fullscreen . maximized))
+
+
+(setq exwm-workspace-show-all-buffers t)
+(setq exwm-workspace-warp-cursor t)
+(setq mouse-autoselect-window t
+      focus-follows-mouse t)
+
+(display-battery-mode 1) ;; ব্যাটারির মতো
+(display-time-mode 1) ;; টাইম দেখাবে
+(setq display-time-format "%Y-%m-%d %H:%M") ;; টাইমের পাশে "Network" লিখা
+(start-process "nm-applet" nil "nm-applet")
+(start-process "feh" nil "feh" "--bg-center" "/home/nothing/Pictures/wallpapers/Anime-Girl-Night-Sky.jpg")
+(tab-bar-mode 1)
 #+end_src
 
 * FLYCHECK
@@ -637,6 +736,132 @@ Ivy-rich allows us to add descriptions alongside the commands in M-x.
                                'ivy-rich-switch-buffer-transformer))
 
 #+end_src
+
+* IVY POST FRAME 
+#+begin_src emacs-lisp
+(require 'ivy-posframe)
+;; display at `ivy-posframe-style'
+(setq ivy-posframe-display-functions-alist '((t . ivy-posframe-display)))
+;; (setq ivy-posframe-display-functions-alist '((t . ivy-posframe-display-at-frame-center)))
+;; (setq ivy-posframe-display-functions-alist '((t . ivy-posframe-display-at-window-center)))
+;; (setq ivy-posframe-display-functions-alist '((t . ivy-posframe-display-at-frame-bottom-left)))
+;; (setq ivy-posframe-display-functions-alist '((t . ivy-posframe-display-at-window-bottom-left)))
+;; (setq ivy-posframe-display-functions-alist '((t . ivy-posframe-display-at-frame-top-center)))
+;; (ivy-posframe-mode 1)
+#+end_src
+* KEYBINDING
+** FOR EMACS
+#+begin_src emacs-lisp
+ ;; Define M-a as a prefix key BUFFERS 
+  (define-key global-map (kbd "M-a") nil)  ;; Start defining a prefix for M-a
+
+  ;; Bookmarks and Buffers keybindings
+  ;;(define-key global-map (kbd "M-a b") 'switch-to-buffer)
+  (define-key global-map (kbd "M-a i") 'exwm-workspace-switch-to-buffer) ;; Uncomment if needed
+  (define-key global-map (kbd "M-a w") 'exwm-workspace-switch ) 
+  (define-key global-map (kbd "M-a c") 'clone-indirect-buffer)
+  (define-key global-map (kbd "M-a C") 'clone-indirect-buffer-other-window)
+  (define-key global-map (kbd "M-a d") 'bookmark-delete)
+  ;;(define-key global-map (kbd "M-a i") 'ibuffer)
+  (define-key global-map (kbd "M-a k") 'kill-buffer-and-window)
+  (define-key global-map (kbd "M-a K") 'kill-some-buffers)
+  (define-key global-map (kbd "M-a l") 'list-bookmarks)
+  (define-key global-map (kbd "M-a m") 'bookmark-set)
+  (define-key global-map (kbd "M-a n") 'next-buffer)
+  (define-key global-map (kbd "M-a p") 'previous-buffer)
+  (define-key global-map (kbd "M-a r") 'revert-buffer)
+  (define-key global-map (kbd "M-a R") 'rename-buffer)
+  (define-key global-map (kbd "M-a s") 'basic-save-buffer)
+  (define-key global-map (kbd "M-a S") 'save-some-buffers)
+  ;;(define-key global-map (kbd "M-a w") 'bookmark-save)
+
+  ;; Define M-w as a prefix key for WINDOWS
+  (define-key global-map (kbd "M-w") nil)  ;; Start defining a prefix for s-w
+  ;; Window management keybindings
+  (define-key global-map (kbd "M-w c") 'evil-window-delete)
+  (define-key global-map (kbd "M-w n") 'evil-window-new)
+  (define-key global-map (kbd "M-w s") 'evil-window-split)
+  (define-key global-map (kbd "M-w v") 'evil-window-vsplit)
+
+  ;; Window motions
+  (define-key global-map (kbd "M-w h") 'evil-window-left)
+  (define-key global-map (kbd "M-w j") 'evil-window-down)
+  (define-key global-map (kbd "M-w k") 'evil-window-up)
+  (define-key global-map (kbd "M-w l") 'evil-window-right)
+  (define-key global-map (kbd "M-w w") 'evil-window-next)
+  (define-key global-map (kbd "M-w m") 'save-buffers-kill-emacs)
+  ;; Move windows
+  (define-key global-map (kbd "M-w H") 'buf-move-left)
+  (define-key global-map (kbd "M-w J") 'buf-move-down)
+  (define-key global-map (kbd "M-w K") 'buf-move-up)
+  (define-key global-map (kbd "M-w L") 'buf-move-right)
+
+  ;; Define M-d as a prefix key in global-map
+  (define-key global-map (kbd "M-d") nil)
+
+  ;; Dired keybindings under M-d
+  (define-key global-map (kbd "M-d D") 'dired) ;; Open Dired
+  (define-key global-map (kbd "M-d d") 'counsel-linux-app) 
+  (define-key global-map (kbd "M-d j") 'dired-jump) ;; Jump to current directory in Dired
+  (define-key global-map (kbd "M-d n") 'neotree-dir) ;; Open directory in Neotree
+  (define-key global-map (kbd "M-d p") 'peep-dired) ;; Peep Dired preview
+#+end_src
+** FOR EXWM 
+#+begin_src 
+ ;; Define M-a as a prefix key in exwm-mode-map
+  ;; Define M-a as a prefix key in exwm-mode-map
+  (define-key exwm-mode-map (kbd "M-a") nil)  ;; Start defining a prefix for M-a in EXWM
+
+  ;; EXWM controls under M-a
+  (define-key exwm-mode-map (kbd "M-a r") 'exwm-reset) ;; Reset EXWM
+  (define-key exwm-mode-map (kbd "M-a w") 'exwm-workspace-switch) ;; Switch workspace
+  (define-key exwm-mode-map (kbd "M-a b") 'exwm-workspace-switch-to-buffer) ;; Switch EXWM buffer
+  (define-key exwm-mode-map (kbd "M-a d") 'exwm-workspace-delete) ;; Delete workspace
+  (define-key exwm-mode-map (kbd "M-a h") 'windmove-left)  ;; Move focus left
+  (define-key exwm-mode-map (kbd "M-a j") 'windmove-down)  ;; Move focus down
+  (define-key exwm-mode-map (kbd "M-a k") 'kill-buffer-and-window)  ;; Move focus up
+  (define-key exwm-mode-map (kbd "M-a l") 'windmove-right)  ;; Move focus right
+  (define-key exwm-mode-map (kbd "M-a f") 'exwm-floating-toggle-floating) ;; Toggle floating mode
+  (define-key exwm-mode-map (kbd "M-a m") 'exwm-layout-toggle-mode-line) ;; Toggle mode-line visibility
+  (define-key exwm-mode-map (kbd "M-a q") 'exwm-input-release-keyboard) ;; Release EXWM keyboard input
+  ;; Release EXWM keyboard input
+  (define-key exwm-mode-map (kbd "M-t") nil) 
+  (define-key exwm-mode-map (kbd "M-t d") 'counsel-linux-app)
+  ;; Define M-w as a prefix key for EXWM
+  (define-key exwm-mode-map (kbd "M-w") nil)  ;; Start defining a prefix for M-w in EXWM
+
+  ;; Window management keybindings
+  (define-key exwm-mode-map (kbd "M-w c") 'evil-window-delete)
+  (define-key exwm-mode-map (kbd "M-w n") 'evil-window-new)
+  (define-key exwm-mode-map (kbd "M-w s") 'evil-window-split)
+  (define-key exwm-mode-map (kbd "M-w v") 'evil-window-vsplit)
+  (define-key exwm-mode-map (kbd "M-w W") 'exwm-workspace-move-window)
+
+  ;; Window motions
+  (define-key exwm-mode-map (kbd "M-w h") 'evil-window-left)
+  (define-key exwm-mode-map (kbd "M-w j") 'evil-window-down)
+  (define-key exwm-mode-map (kbd "M-w k") 'evil-window-up)
+  (define-key exwm-mode-map (kbd "M-w l") 'evil-window-right)
+  (define-key exwm-mode-map (kbd "M-w w") 'evil-window-next)
+
+  ;; Move windows
+  (define-key exwm-mode-map (kbd "M-w H") 'buf-move-left)
+  (define-key exwm-mode-map (kbd "M-w J") 'buf-move-down)
+  (define-key exwm-mode-map (kbd "M-w K") 'buf-move-up)
+  (define-key exwm-mode-map (kbd "M-w L") 'buf-move-right)
+  (define-key exwm-mode-map (kbd "M-w m") 'save-buffers-kill-emacs)
+
+  ;; Define M-d as a prefix key in EXWM mode
+  (define-key exwm-mode-map (kbd "M-d") nil)
+
+  ;; Dired keybindings under M-d for EXWM
+  (define-key exwm-mode-map (kbd "M-d D") 'dired) ;; Open Dired
+  (define-key exwm-mode-map (kbd "M-d d") 'counsel-linux-app) 
+  (define-key exwm-mode-map (kbd "M-d j") 'dired-jump) ;; Jump to current directory in Dired
+  (define-key exwm-mode-map (kbd "M-d n") 'neotree-dir) ;; Open directory in Neotree
+  (define-key exwm-mode-map (kbd "M-d p") 'peep-dired) ;; Peep Dired preview
+
+#+end_src
 * MINIBUFFER ESCAPE
 #+begin_src emacs-lisp
 (global-set-key [escape] 'keyboard-escape-quit)
@@ -724,7 +949,7 @@ You can use the bindings CTRL plus =/- for zooming in/out.  You can also use CTR
 #+begin_src emacs-lisp
 (start-process "picom" nil "picom")
 
-(add-to-list 'default-frame-alist '(alpha-background . 60)) ; For all new frames henceforth
+(add-to-list 'default-frame-alist '(alpha-background . 90)) ; For all new frames henceforth
 (set-frame-parameter (selected-frame) 'alpha '(90 . 90))
 (add-to-list 'default-frame-alist '(alpha . (90 . 90)))
 #+end_src
