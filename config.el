@@ -1,0 +1,831 @@
+(defvar elpaca-installer-version 0.11)
+(defvar elpaca-directory (expand-file-name "elpaca/" user-emacs-directory))
+(defvar elpaca-builds-directory (expand-file-name "builds/" elpaca-directory))
+(defvar elpaca-repos-directory (expand-file-name "repos/" elpaca-directory))
+(defvar elpaca-order '(elpaca :repo "https://github.com/progfolio/elpaca.git"
+                              :ref nil :depth 1 :inherit ignore
+                              :files (:defaults "elpaca-test.el" (:exclude "extensions"))
+                              :build (:not elpaca--activate-package)))
+(let* ((repo  (expand-file-name "elpaca/" elpaca-repos-directory))
+       (build (expand-file-name "elpaca/" elpaca-builds-directory))
+       (order (cdr elpaca-order))
+       (default-directory repo))
+  (add-to-list 'load-path (if (file-exists-p build) build repo))
+  (unless (file-exists-p repo)
+    (make-directory repo t)
+    (when (<= emacs-major-version 28) (require 'subr-x))
+    (condition-case-unless-debug err
+        (if-let* ((buffer (pop-to-buffer-same-window "*elpaca-bootstrap*"))
+                  ((zerop (apply #'call-process `("git" nil ,buffer t "clone"
+                                                  ,@(when-let* ((depth (plist-get order :depth)))
+                                                      (list (format "--depth=%d" depth) "--no-single-branch"))
+                                                  ,(plist-get order :repo) ,repo))))
+                  ((zerop (call-process "git" nil buffer t "checkout"
+                                        (or (plist-get order :ref) "--"))))
+                  (emacs (concat invocation-directory invocation-name))
+                  ((zerop (call-process emacs nil buffer nil "-Q" "-L" "." "--batch"
+                                        "--eval" "(byte-recompile-directory \".\" 0 'force)")))
+                  ((require 'elpaca))
+                  ((elpaca-generate-autoloads "elpaca" repo)))
+            (progn (message "%s" (buffer-string)) (kill-buffer buffer))
+          (error "%s" (with-current-buffer buffer (buffer-string))))
+      ((error) (warn "%s" err) (delete-directory repo 'recursive))))
+  (unless (require 'elpaca-autoloads nil t)
+    (require 'elpaca)
+    (elpaca-generate-autoloads "elpaca" repo)
+    (let ((load-source-file-function nil)) (load "./elpaca-autoloads"))))
+(add-hook 'after-init-hook #'elpaca-process-queues)
+(elpaca `(,@elpaca-order))
+
+(require 'package)
+(setq package-archives
+      '(("gnu" . "https://elpa.gnu.org/packages/")
+        ("melpa" . "https://melpa.org/packages/")
+        ("org" . "https://orgmode.org/elpa/")))
+(package-initialize)
+;;(package-refresh-contents)
+
+(setq backup-directory-alist '((".*" . "~/.local/share/Trash/files")))
+
+(require 'windmove)
+
+;;;###autoload
+(defun buf-move-up ()
+  "Swap the current buffer and the buffer above the split.
+If there is no split, ie now window above the current one, an
+error is signaled."
+;;  "Switches between the current buffer, and the buffer above the
+;;  split, if possible."
+  (interactive)
+  (let* ((other-win (windmove-find-other-window 'up))
+	 (buf-this-buf (window-buffer (selected-window))))
+    (if (null other-win)
+        (error "No window above this one")
+      ;; swap top with this one
+      (set-window-buffer (selected-window) (window-buffer other-win))
+      ;; move this one to top
+      (set-window-buffer other-win buf-this-buf)
+      (select-window other-win))))
+
+;;;###autoload
+(defun buf-move-down ()
+"Swap the current buffer and the buffer under the split.
+If there is no split, ie now window under the current one, an
+error is signaled."
+  (interactive)
+  (let* ((other-win (windmove-find-other-window 'down))
+	 (buf-this-buf (window-buffer (selected-window))))
+    (if (or (null other-win) 
+            (string-match "^ \\*Minibuf" (buffer-name (window-buffer other-win))))
+        (error "No window under this one")
+      ;; swap top with this one
+      (set-window-buffer (selected-window) (window-buffer other-win))
+      ;; move this one to top
+      (set-window-buffer other-win buf-this-buf)
+      (select-window other-win))))
+
+;;;###autoload
+(defun buf-move-left ()
+"Swap the current buffer and the buffer on the left of the split.
+If there is no split, ie now window on the left of the current
+one, an error is signaled."
+  (interactive)
+  (let* ((other-win (windmove-find-other-window 'left))
+	 (buf-this-buf (window-buffer (selected-window))))
+    (if (null other-win)
+        (error "No left split")
+      ;; swap top with this one
+      (set-window-buffer (selected-window) (window-buffer other-win))
+      ;; move this one to top
+      (set-window-buffer other-win buf-this-buf)
+      (select-window other-win))))
+
+;;;###autoload
+(defun buf-move-right ()
+"Swap the current buffer and the buffer on the right of the split.
+If there is no split, ie now window on the right of the current
+one, an error is signaled."
+  (interactive)
+  (let* ((other-win (windmove-find-other-window 'right))
+	 (buf-this-buf (window-buffer (selected-window))))
+    (if (null other-win)
+        (error "No right split")
+      ;; swap top with this one
+      (set-window-buffer (selected-window) (window-buffer other-win))
+      ;; move this one to top
+      (set-window-buffer other-win buf-this-buf)
+      (select-window other-win))))
+
+(use-package company
+  :ensure t
+  :defer 2
+  :diminish
+  :after lsp-mode
+  :hook (prog-mode . company-mode)
+  :bind (:map company-active-map
+         ("<tab>" . company-complete-selection))
+        (:map lsp-mode-map
+         ("<tab>" . company-indent-or-complete-common))
+
+  :custom
+  (company-begin-commands '(self-insert-command))
+  (company-minimum-prefix-length 2)
+  (company-show-numbers t)
+  (company-tooltip-align-annotations 't)
+  (global-company-mode t))
+
+
+(use-package company-box
+  :ensure t
+  :after company
+  :diminish
+  :hook (company-mode . company-box-mode))
+
+(use-package dashboard
+:ensure t 
+:init
+(setq initial-buffer-choice 'dashboard-open)
+(setq dashboard-set-heading-icons t)
+(setq dashboard-set-file-icons t)
+(setq dashboard-banner-logo-title "NOTHING IS HERE")
+;;(setq dashboard-startup-banner 'logo) ;; use standard emacs logo as banner
+(setq dashboard-startup-banner "/home/nothing/Downloads/emacs-dash.png")  ;; use custom image as banner
+(setq dashboard-center-content nil) ;; set to 't' for centered content
+(setq dashboard-items '((recents . 5)
+                        (agenda . 5 )
+                        (bookmarks . 3)
+                        (projects . 3)
+                        (registers . 3)))
+:custom
+(dashboard-modify-heading-icons '((recents . "file-text")
+                                  (bookmarks . "book")))
+:config
+(dashboard-setup-startup-hook))
+
+(global-auto-revert-mode t)  ;; Automatically show changes if the file has changed
+(global-display-line-numbers-mode 1) ;; Display line numbers
+
+(global-visual-line-mode t)  ;; Enable truncated lines
+(menu-bar-mode -1)           ;; Disable the menu bar 
+(scroll-bar-mode -1)         ;; Disable the scroll bar
+(tool-bar-mode -1)           ;; Disable the tool bar
+(setq org-edit-src-content-indentation 0) ;; Set src block automatic indent to 0 instead of 2.
+
+
+(delete-selection-mode 1)    ;; You can select text and delete it by typing.
+(electric-indent-mode -1)    ;; Turn off the weird indenting that Emacs does by default.
+(electric-pair-mode 1)       ;; Turns on automatic parens pairing
+;; The following prevents <> from auto-pairing when electric-pair-mode is on.
+;; Otherwise, org-tempo is broken when you try to <s TAB...
+(add-hook 'org-mode-hook (lambda ()
+			   (setq-local electric-pair-inhibit-predicate
+                       `(lambda (c)
+                      (if (char-equal c ?<) t (,electric-pair-inhibit-predicate c))))))
+
+(package-install 'doom-modeline)
+(require 'doom-modeline)
+(doom-modeline-mode 1)
+(use-package doom-themes
+  :ensure t
+  :config
+  (setq doom-themes-enable-bold t    ; if nil, bold is universally disabled
+      doom-themes-enable-italic t)) ; if nil, italics is universally disabled
+
+(load-theme 'doom-one t)
+
+(use-package diminish
+:ensure t)
+
+(use-package dired-open
+  :ensure t
+  :config
+  (setq dired-open-extensions '(("gif" . "sxiv")
+                                ("jpg" . "sxiv")
+                                ("png" . "sxiv")
+                                ("mkv" . "vlc")
+                                ("mp4" . "vlc"))))
+
+(use-package peep-dired
+  :ensure t
+  :after dired
+  :hook (evil-normalize-keymaps . peep-dired-hook)
+  :config
+    (evil-define-key 'normal dired-mode-map (kbd "h") 'dired-up-directory)
+    (evil-define-key 'normal dired-mode-map (kbd "l") 'dired-open-file) ; use dired-find-file instead if not using dired-open package
+    (evil-define-key 'normal peep-dired-mode-map (kbd "j") 'peep-dired-next-file)
+    (evil-define-key 'normal peep-dired-mode-map (kbd "k") 'peep-dired-prev-file)
+)
+
+;;(add-hook 'peep-dired-hook 'evil-normalize-keymaps)
+
+;; Install use-package support
+(elpaca elpaca-use-package
+  ;; Enable use-package :ensure support for Elpaca.
+  (elpaca-use-package-mode))
+
+(use-package emacs :ensure nil :config (setq ring-bell-function #'ignore))
+
+(use-package evil
+  :ensure t
+  :init
+  (setq evil-want-integration t)
+  (setq evil-want-keybinding nil)
+  (setq evil-vsplit-window-right t)
+  (setq evil-split-window-below t)
+  (evil-mode 1))
+
+(use-package evil-collection
+  :ensure t
+  :after evil
+  :config
+  (evil-collection-init))
+
+(use-package evil-tutor
+  :ensure t)
+
+;; Using RETURN to follow links in Org/Evil 
+;; Unmap keys in 'evil-maps if not done, (setq org-return-follows-link t) will not work
+(with-eval-after-load 'evil-maps
+  (define-key evil-motion-state-map (kbd "SPC") nil)
+  (define-key evil-motion-state-map (kbd "RET") nil)
+  (define-key evil-motion-state-map (kbd "TAB") nil))
+;; Setting RETURN key in org-mode to follow links
+  (setq org-return-follows-link  t)
+
+(require 'exwm)
+;; Set the initial workspace number.
+(setq exwm-workspace-number 10)
+;; Make class name the buffer name.
+(add-hook 'exwm-update-class-hook
+  (lambda () (exwm-workspace-rename-buffer exwm-class-name)))
+;; Global keybindings.
+(setq exwm-input-global-keys
+      `(([?\M-r] . exwm-reset) ;; s-r: Reset (to line-mode).
+        ([?\M-n] . exwm-workspace-switch) ;; s-w: Switch workspace.
+        ([?\M-&] . (lambda (cmd) ;; s-&: Launch application.
+                     (interactive (list (read-shell-command "$ ")))
+                     (start-process-shell-command cmd nil cmd)))
+        ;; s-N: Switch to certain workspace.
+        ,@(mapcar (lambda (i)
+                    `(,(kbd (format "M-%d" i)) .
+                      (lambda ()
+                        (interactive)
+                        (exwm-workspace-switch-create ,i))))
+                  (number-sequence 0 9))))
+;; Enable EXWM
+(exwm-enable)
+
+(add-hook 'exwm-manage-finish-hook
+          (lambda ()
+            (when (and exwm-class-name
+                       (string= exwm-class-name "Firefox"))
+              (exwm-input-set-local-simulation-keys nil))))
+
+(require 'exwm-systemtray)
+(exwm-systemtray-mode 1)
+
+(setq X11_SCREEN_LIST '("eDP-1" "DP-3"))
+
+ ;; xrandr --mode for each screen in X11_SCREEN_LIST
+ (setq X11_SCREEN_MODE_LIST '("1680x1050" "3840x1600"))
+
+ ;; xrandr --rate for each screen in X11_SCREEN_LIST
+ (setq X11_SCREEN_RATE_LIST '("59.95" "59.99"))
+
+ ;; How screens are arranged from left to right. Vertical order, and "--same-as" not yet implemented.
+ (setq X11_SCREEN_ORDER_LIST '("DP-3" "eDP-1"))
+
+ ;; X11 screens (graphics outputs) that should always be explicitly turned off, if available.
+ (setq X11_SCREEN_DISABLED_LIST '("DP-2"))
+
+ ;; Primary X11 screen, if available
+ (setq X11_SCREEN_PREFERRED "DP-3")
+ ;; (setq X11_SCREEN_PREFERRED "eDP-1")
+
+ ;; If X11_SCREEN_USE_ALL_AVAILABLE="yes" then use all available screens in X11_SCREEN_LIST:
+ ;; - X11_SCREEN_PREFERRED is primary, if available
+ ;; - If X11_SCREEN_PREFERRED is unavailable, primary is first available screen in X11_SCREEN_LIST.
+ ;; Otherwise use only one:
+ ;; - X11_SCREEN_PREFERRED if available
+ ;; - If X11_SCREEN_PREFERRED is unavailable then use first available screen in X11_SCREEN_LIST.
+ (setq X11_SCREEN_USE_ALL_AVAILABLE t)
+ ;; (setq X11_SCREEN_USE_ALL_AVAILABLE nil)
+
+ ;; Argument value for "xrandr --dpi", i.e. Dots Per Inch. This is for the X11 DISPLAY, i.e. used for all screens.
+ (setq X11_DISPLAY_DPI 106)
+
+ ;; List of pairs "workspace-number screen"
+ ;; Used to construct exwm-randr-workspace-monitor-plist in emacs.
+ ;; If a screen in this list is unavailable, the workspace will be mapped to the primary screen.
+ (setq EXWM_WORKSPACE_LIST '((1 . "eDP-1") (3 . "eDP-1")))
+ ;; (setq EXWM_WORKSPACE_LIST '((1 . "DP-3") (3 . "DP-3")))
+
+(add-to-list 'default-frame-alist '(fullscreen . maximized))
+
+
+(setq exwm-workspace-show-all-buffers t)
+(setq exwm-workspace-warp-cursor t)
+(setq mouse-autoselect-window t
+      focus-follows-mouse t)
+
+(display-battery-mode 1) ;;Show the battery
+(display-time-mode 1) ;; Show Time
+(setq display-time-format "%Y-%m-%d %H:%M") ;; Time Formate 
+(start-process "nm-applet" nil "nm-applet") ;; Starting Wireless conncetion 
+(start-process "feh" nil "feh" "--bg-center" "/home/nothing/Downloads/Telegram Desktop/dack.png") ;; Background
+;; (tab-bar-mode 1)
+
+(use-package flycheck
+  :ensure t
+  :defer t
+  :diminish
+  :init (global-flycheck-mode))
+
+(use-package general
+   :ensure t
+   :config
+   
+   ;; Define 'SPC' as the global leader key
+   (general-create-definer dt/leader-keys
+     :states '(normal insert visual emacs)
+     :keymaps 'override
+     :prefix "SPC"  ;; Leader key
+     :global-prefix "M-SPC")  ;; Access leader in insert mode
+
+   ;; Define the keybindings
+   (dt/leader-keys
+     "SPC" '(counsel-M-x :wk "Counsel M-x")
+     "." '(find-file :wk "Find file")
+     "=" '(perspective-map :wk "Perspective")
+     "TAB TAB" '(comment-line :wk "Comment lines")
+     "u" '(universal-argument :wk "Universal argument"))
+
+   (dt/leader-keys
+   "b" '(:ignore t :wk "Bookmarks/Buffers")
+   "b b" '(switch-to-buffer :wk "Switch to buffer")
+   ;;"b B" '(exwm-workspace-switch-to-buffer :wk "Exwm buffer switch")
+   "b c" '(clone-indirect-buffer :wk "Create indirect buffer copy in a split")
+   "b C" '(clone-indirect-buffer-other-window :wk "Clone indirect buffer in new window")
+   "b d" '(bookmark-delete :wk "Delete bookmark")
+   "b i" '(ibuffer :wk "Ibuffer")
+   "b k" '(kill-current-buffer :wk "Kill current buffer")
+   "b K" '(kill-some-buffers :wk "Kill multiple buffers")
+   "b l" '(list-bookmarks :wk "List bookmarks")
+   "b m" '(bookmark-set :wk "Set bookmark")
+   "b n" '(next-buffer :wk "Next buffer")
+   "b p" '(previous-buffer :wk "Previous buffer")
+   "b r" '(revert-buffer :wk "Reload buffer")
+   "b R" '(rename-buffer :wk "Rename buffer")
+   "b s" '(basic-save-buffer :wk "Save buffer")
+   "b S" '(save-some-buffers :wk "Save multiple buffers")
+   "b w" '(bookmark-save :wk "Save current bookmarks to bookmark file"))
+
+ (dt/leader-keys
+   "d" '(:ignore t :wk "Dired")
+   "d d" '(dired :wk "Open dired")
+   "d j" '(dired-jump :wk "Dired jump to current")
+   "d n" '(neotree-dir :wk "Open directory in neotree")
+   "d p" '(peep-dired :wk "Peep-dired"))
+
+ (dt/leader-keys
+   "e" '(:ignore t :wk "Eshell/Evaluate")    
+   "e b" '(eval-buffer :wk "Evaluate elisp in buffer")
+   "e d" '(eval-defun :wk "Evaluate defun containing or after point")
+   "e e" '(eval-expression :wk "Evaluate and elisp expression")
+   "e h" '(counsel-esh-history :which-key "Eshell history")
+   "e l" '(eval-last-sexp :wk "Evaluate elisp expression before point")
+   "e r" '(eval-region :wk "Evaluate elisp in region")
+   "e R" '(eww-reload :which-key "Reload current page in EWW")
+   "e s" '(eshell :which-key "Eshell")
+   "e w" '(eww :which-key "EWW emacs web wowser"))
+
+ (dt/leader-keys
+   "f" '(:ignore t :wk "Files")    
+   "f c" '((lambda () (interactive)
+             (find-file "~/.config/emacs/config.org")) 
+           :wk "Open emacs config.org")
+   "f e" '((lambda () (interactive)
+             (dired "~/.config/emacs/")) 
+           :wk "Open user-emacs-directory in dired")
+   "f d" '(find-grep-dired :wk "Search for string in files in DIR")
+   "f g" '(counsel-grep-or-swiper :wk "Search for string current file")
+   "f i" '((lambda () (interactive)
+             (find-file "~/.config/emacs/init.el")) 
+           :wk "Open emacs init.el")
+   "f j" '(counsel-file-jump :wk "Jump to a file below current directory")
+   "f l" '(counsel-locate :wk "Locate a file")
+   "f r" '(counsel-recentf :wk "Find recent files")
+   "f u" '(sudo-edit-find-file :wk "Sudo find file")
+   "f U" '(sudo-edit :wk "Sudo edit file"))
+
+ (dt/leader-keys
+   "g" '(:ignore t :wk "Git")    
+   "g /" '(magit-displatch :wk "Magit dispatch")
+   "g ." '(magit-file-displatch :wk "Magit file dispatch")
+   "g b" '(magit-branch-checkout :wk "Switch branch")
+   "g c" '(:ignore t :wk "Create") 
+   "g c b" '(magit-branch-and-checkout :wk "Create branch and checkout")
+   "g c c" '(magit-commit-create :wk "Create commit")
+   "g c f" '(magit-commit-fixup :wk "Create fixup commit")
+   "g C" '(magit-clone :wk "Clone repo")
+   "g f" '(:ignore t :wk "Find") 
+   "g f c" '(magit-show-commit :wk "Show commit")
+   "g f f" '(magit-find-file :wk "Magit find file")
+   "g f g" '(magit-find-git-config-file :wk "Find gitconfig file")
+   "g F" '(magit-fetch :wk "Git fetch")
+   "g g" '(magit-status :wk "Magit status")
+   "g i" '(magit-init :wk "Initialize git repo")
+   "g l" '(magit-log-buffer-file :wk "Magit buffer log")
+   "g r" '(vc-revert :wk "Git revert file")
+   "g s" '(magit-stage-file :wk "Git stage file")
+   "g t" '(git-timemachine :wk "Git time machine")
+   "g u" '(magit-stage-file :wk "Git unstage file"))
+
+(dt/leader-keys
+   "h" '(:ignore t :wk "Help")
+   "h a" '(counsel-apropos :wk "Apropos")
+   "h b" '(describe-bindings :wk "Describe bindings")
+   "h c" '(describe-char :wk "Describe character under cursor")
+   "h d" '(:ignore t :wk "Emacs documentation")
+   "h d a" '(about-emacs :wk "About Emacs")
+   "h d d" '(view-emacs-debugging :wk "View Emacs debugging")
+   "h d f" '(view-emacs-FAQ :wk "View Emacs FAQ")
+   "h d m" '(info-emacs-manual :wk "The Emacs manual")
+   "h d n" '(view-emacs-news :wk "View Emacs news")
+   "h d o" '(describe-distribution :wk "How to obtain Emacs")
+   "h d p" '(view-emacs-problems :wk "View Emacs problems")
+   "h d t" '(view-emacs-todo :wk "View Emacs todo")
+   "h d w" '(describe-no-warranty :wk "Describe no warranty")
+   "h e" '(view-echo-area-messages :wk "View echo area messages")
+   "h f" '(describe-function :wk "Describe function")
+   "h F" '(describe-face :wk "Describe face")
+   "h g" '(describe-gnu-project :wk "Describe GNU Project")
+   "h i" '(info :wk "Info")
+   "h I" '(describe-input-method :wk "Describe input method")
+   "h k" '(describe-key :wk "Describe key")
+   "h l" '(view-lossage :wk "Display recent keystrokes and the commands run")
+   "h L" '(describe-language-environment :wk "Describe language environment")
+   "h m" '(describe-mode :wk "Describe mode")
+   "h r" '(:ignore t :wk "Reload")
+   "h r r" '((lambda () (interactive)
+               (load-file "~/.config/emacs/init.el")
+               (ignore (elpaca-process-queues)))
+             :wk "Reload emacs config")
+   "h t" '(load-theme :wk "Load theme")
+   "h v" '(describe-variable :wk "Describe variable")
+   "h w" '(where-is :wk "Prints keybinding for command if set")
+   "h x" '(describe-command :wk "Display full documentation for command"))
+
+ (dt/leader-keys
+   "m" '(:ignore t :wk "Org")
+   "m a" '(org-agenda :wk "Org agenda")
+   "m e" '(org-export-dispatch :wk "Org export dispatch")
+   "m i" '(org-toggle-item :wk "Org toggle item")
+   "m t" '(org-todo :wk "Org todo")
+   "m B" '(org-babel-tangle :wk "Org babel tangle")
+   "m T" '(org-todo-list :wk "Org todo list"))
+
+ (dt/leader-keys
+   "m b" '(:ignore t :wk "Tables")
+   "m b -" '(org-table-insert-hline :wk "Insert hline in table"))
+
+ (dt/leader-keys
+   "m d" '(:ignore t :wk "Date/deadline")
+   "m d t" '(org-time-stamp :wk "Org time stamp"))
+
+ (dt/leader-keys
+   "o" '(:ignore t :wk "Open")
+   "o d" '(dashboard-open :wk "Dashboard")
+   "o e" '(elfeed :wk "Elfeed RSS")
+   "o f" '(make-frame :wk "Open buffer in new frame")
+   "o F" '(select-frame-by-name :wk "Select frame by name"))
+
+ ;; projectile-command-map already has a ton of bindings 
+ ;; set for us, so no need to specify each individually.
+ (dt/leader-keys
+   "p" '(projectile-command-map :wk "Projectile"))
+
+ (dt/leader-keys
+   "s" '(:ignore t :wk "Search")
+   "s d" '(dictionary-search :wk "Search dictionary")
+   "s m" '(man :wk "Man pages")
+   "s t" '(tldr :wk "Lookup TLDR docs for a command")
+   "s w" '(woman :wk "Similar to man but doesn't require man"))
+
+ (dt/leader-keys
+   "t" '(:ignore t :wk "Toggle")
+   "t e" '(eshell-toggle :wk "Toggle eshell")
+   "t f" '(flycheck-mode :wk "Toggle flycheck")
+   "t l" '(display-line-numbers-mode :wk "Toggle line numbers")
+   "t n" '(neotree-toggle :wk "Toggle neotree file viewer")
+   "t o" '(org-mode :wk "Toggle org mode")
+   "t r" '(rainbow-mode :wk "Toggle rainbow mode")
+   "t t" '(visual-line-mode :wk "Toggle truncated lines")
+   "t d" '(counsel-linux-app :wk "Open application")
+   "t v" '(vterm-toggle :wk "Toggle vterm"))
+
+ (dt/leader-keys
+   "w" '(:ignore t :wk "Windows")
+   ;; Window splits
+   "w c" '(evil-window-delete :wk "Close window")
+   "w n" '(evil-window-new :wk "New window")
+   "w s" '(evil-window-split :wk "Horizontal split window")
+   "w v" '(evil-window-vsplit :wk "Vertical split window")
+   ;; Window motions
+   "w h" '(evil-window-left :wk "Window left")
+   "w j" '(evil-window-down :wk "Window down")
+   "w k" '(evil-window-up :wk "Window up")
+   "w l" '(evil-window-right :wk "Window right")
+   "w w" '(evil-window-next :wk "Goto next window")
+   ;; Move Windows
+   "w H" '(buf-move-left :wk "Buffer move left")
+   "w J" '(buf-move-down :wk "Buffer move down")
+   "w K" '(buf-move-up :wk "Buffer move up")
+   "w L" '(buf-move-right :wk "Buffer move right"))
+  
+ )
+
+;; (use-package all-the-icons
+;;   :if (display-graphic-p)
+;;   :defer t)
+
+;; (use-package nerd-icons
+;;   :if (display-graphic-p)
+;;   :defer t)
+(use-package nerd-icons-dired
+  :hook (dired-mode . nerd-icons-dired-mode)
+  :ensure t)
+
+(use-package nerd-icons-ibuffer
+  :hook (ibuffer-mode . nerd-icons-ibuffer-mode)
+  :ensure t)
+
+(use-package all-the-icons-dired
+  :hook (dired-mode . (lambda () (all-the-icons-dired-mode t))))
+
+(set-face-attribute 'default nil
+  :font "JetBrains Mono"
+  :height 220
+  :weight 'medium)
+(set-face-attribute 'variable-pitch nil
+  :font "Ubuntu"
+  :height 120
+  :weight 'medium)
+(set-face-attribute 'fixed-pitch nil
+  :font "JetBrains Mono"
+  :height 110
+  :weight 'medium)
+;; Makes commented text and keywords italics.
+;; This is working in emacsclient but not emacs.
+;; Your font must have an italic face available.
+(set-face-attribute 'font-lock-comment-face nil
+  :slant 'italic)
+(set-face-attribute 'font-lock-keyword-face nil
+  :slant 'italic)
+
+;; This sets the default font on all graphical frames created after restarting Emacs.
+;; Does the same thing as 'set-face-attribute default' above, but emacsclient fonts
+;; are not right unless I also add this method of setting the default font.
+(add-to-list 'default-frame-alist '(font . "JetBrains Mono-11"))
+
+;; Uncomment the following line if line spacing needs adjusting.
+(setq-default line-spacing 0.12)
+
+(use-package counsel
+  :ensure t
+  :after ivy
+  :config (counsel-mode))
+
+(use-package ivy
+  :ensure t
+  :bind
+  ;; ivy-resume resumes the last Ivy-based completion.
+  (("C-c C-r" . ivy-resume)
+   ("C-x B" . ivy-switch-buffer-other-window))
+  :custom
+  (setq ivy-use-virtual-buffers t)
+  (setq ivy-count-format "(%d/%d) ")
+  (setq enable-recursive-minibuffers t)
+  :config
+  (ivy-mode))
+
+(use-package all-the-icons-ivy-rich
+  :ensure t
+  :init (all-the-icons-ivy-rich-mode 1))
+
+(use-package ivy-rich
+  :ensure t
+  :after ivy
+  :init (ivy-rich-mode 1) ;; this gets us descriptions in M-x.
+  :custom
+  (ivy-virtual-abbreviate 'full
+   ivy-rich-switch-buffer-align-virtual-buffer t
+   ivy-rich-path-style 'abbrev)
+  :config
+  (ivy-set-display-transformer 'ivy-switch-buffer
+                               'ivy-rich-switch-buffer-transformer))
+
+(require 'ivy-posframe)
+;; display at `ivy-posframe-style'
+(setq ivy-posframe-display-functions-alist '((t . ivy-posframe-display)))
+;; (setq ivy-posframe-display-functions-alist '((t . ivy-posframe-display-at-frame-center)))
+;; (setq ivy-posframe-display-functions-alist '((t . ivy-posframe-display-at-window-center)))
+;; (setq ivy-posframe-display-functions-alist '((t . ivy-posframe-display-at-frame-bottom-left)))
+;; (setq ivy-posframe-display-functions-alist '((t . ivy-posframe-display-at-window-bottom-left)))
+;; (setq ivy-posframe-display-functions-alist '((t . ivy-posframe-display-at-frame-top-center)))
+;; (ivy-posframe-mode 1)
+
+;; Define M-a as a prefix key BUFFERS 
+ (define-key global-map (kbd "M-a") nil)  ;; Start defining a prefix for M-a
+
+ ;; Bookmarks and Buffers keybindings
+ ;;(define-key global-map (kbd "M-a b") 'switch-to-buffer)
+ (define-key global-map (kbd "M-a i") 'ibuffer) ;; Uncomment if needed
+ (define-key global-map (kbd "M-a w") 'exwm-workspace-switch ) 
+ (define-key global-map (kbd "M-a c") 'clone-indirect-buffer)
+ (define-key global-map (kbd "M-a C") 'clone-indirect-buffer-other-window)
+ (define-key global-map (kbd "M-a d") 'bookmark-delete)
+ ;;(define-key global-map (kbd "M-a i") 'ibuffer)
+ (define-key global-map (kbd "M-a k") 'kill-buffer-and-window)
+ (define-key global-map (kbd "M-a K") 'kill-some-buffers)
+ (define-key global-map (kbd "M-a l") 'list-bookmarks)
+ (define-key global-map (kbd "M-a m") 'bookmark-set)
+ (define-key global-map (kbd "M-a n") 'next-buffer)
+ (define-key global-map (kbd "M-a p") 'previous-buffer)
+ (define-key global-map (kbd "M-a r") 'revert-buffer)
+ (define-key global-map (kbd "M-a R") 'rename-buffer)
+ (define-key global-map (kbd "M-a s") 'basic-save-buffer)
+ (define-key global-map (kbd "M-a S") 'save-some-buffers)
+ ;;(define-key global-map (kbd "M-a w") 'bookmark-save)
+
+ ;; Define M-w as a prefix key for WINDOWS
+ (define-key global-map (kbd "M-w") nil)  ;; Start defining a prefix for s-w
+ ;; Window management keybindings
+ (define-key global-map (kbd "M-w c") 'evil-window-delete)
+ (define-key global-map (kbd "M-w n") 'evil-window-new)
+ (define-key global-map (kbd "M-w s") 'evil-window-split)
+ (define-key global-map (kbd "M-w v") 'evil-window-vsplit)
+
+ ;; Window motions
+ (define-key global-map (kbd "M-w h") 'evil-window-left)
+ (define-key global-map (kbd "M-w j") 'evil-window-down)
+ (define-key global-map (kbd "M-w k") 'evil-window-up)
+ (define-key global-map (kbd "M-w l") 'evil-window-right)
+ (define-key global-map (kbd "M-w w") 'evil-window-next)
+ (define-key global-map (kbd "M-w m") 'save-buffers-kill-emacs)
+ ;; Move windows
+ (define-key global-map (kbd "M-w H") 'buf-move-left)
+ (define-key global-map (kbd "M-w J") 'buf-move-down)
+ (define-key global-map (kbd "M-w K") 'buf-move-up)
+ (define-key global-map (kbd "M-w L") 'buf-move-right)
+
+ ;; Define M-d as a prefix key in global-map
+ (define-key global-map (kbd "M-d") nil)
+
+ ;; Dired keybindings under M-d
+ (define-key global-map (kbd "M-d D") 'dired) ;; Open Dired
+ (define-key global-map (kbd "M-d d") 'counsel-linux-app) 
+ (define-key global-map (kbd "M-d j") 'dired-jump) ;; Jump to current directory in Dired
+ (define-key global-map (kbd "M-d n") 'neotree-dir) ;; Open directory in Neotree
+ (define-key global-map (kbd "M-d p") 'peep-dired) ;; Peep Dired preview
+ (define-key global-map (kbd "M-d x") 'kill-emacs) ;; Kill emacs
+
+;; Define M-a as a prefix key in exwm-mode-map
+ ;; Define M-a as a prefix key in exwm-mode-map
+ (define-key exwm-mode-map (kbd "M-a") nil)  ;; Start defining a prefix for M-a in EXWM
+
+ ;; EXWM controls under M-a
+ (define-key exwm-mode-map (kbd "M-a r") 'exwm-reset) ;; Reset EXWM
+ (define-key exwm-mode-map (kbd "M-a w") 'exwm-workspace-switch) ;; Switch workspace
+ (define-key exwm-mode-map (kbd "M-a b") 'exwm-workspace-switch-to-buffer) ;; Switch EXWM buffer
+ (define-key exwm-mode-map (kbd "M-a d") 'exwm-workspace-delete) ;; Delete workspace
+ (define-key exwm-mode-map (kbd "M-a h") 'windmove-left)  ;; Move focus left
+ (define-key exwm-mode-map (kbd "M-a j") 'windmove-down)  ;; Move focus down
+ (define-key exwm-mode-map (kbd "M-a k") 'kill-buffer-and-window)  ;; Move focus up
+ (define-key exwm-mode-map (kbd "M-a l") 'windmove-right)  ;; Move focus right
+ (define-key exwm-mode-map (kbd "M-a f") 'exwm-floating-toggle-floating) ;; Toggle floating mode
+ (define-key exwm-mode-map (kbd "M-a m") 'exwm-layout-toggle-mode-line) ;; Toggle mode-line visibility
+ (define-key exwm-mode-map (kbd "M-a q") 'exwm-input-release-keyboard) ;; Release EXWM keyboard input
+ ;; Release EXWM keyboard input
+ (define-key exwm-mode-map (kbd "M-t") nil) 
+ (define-key exwm-mode-map (kbd "M-t d") 'counsel-linux-app)
+ ;; Define M-w as a prefix key for EXWM
+ (define-key exwm-mode-map (kbd "M-w") nil)  ;; Start defining a prefix for M-w in EXWM
+
+ ;; Window management keybindings
+ (define-key exwm-mode-map (kbd "M-w c") 'evil-window-delete)
+ (define-key exwm-mode-map (kbd "M-w n") 'evil-window-new)
+ (define-key exwm-mode-map (kbd "M-w s") 'evil-window-split)
+ (define-key exwm-mode-map (kbd "M-w v") 'evil-window-vsplit)
+ (define-key exwm-mode-map (kbd "M-w W") 'exwm-workspace-move-window)
+
+ ;; Window motions
+ (define-key exwm-mode-map (kbd "M-w h") 'evil-window-left)
+ (define-key exwm-mode-map (kbd "M-w j") 'evil-window-down)
+ (define-key exwm-mode-map (kbd "M-w k") 'evil-window-up)
+ (define-key exwm-mode-map (kbd "M-w l") 'evil-window-right)
+ (define-key exwm-mode-map (kbd "M-w w") 'evil-window-next)
+
+ ;; Move windows
+ (define-key exwm-mode-map (kbd "M-w H") 'buf-move-left)
+ (define-key exwm-mode-map (kbd "M-w J") 'buf-move-down)
+ (define-key exwm-mode-map (kbd "M-w K") 'buf-move-up)
+ (define-key exwm-mode-map (kbd "M-w L") 'buf-move-right)
+ (define-key exwm-mode-map (kbd "M-w m") 'save-buffers-kill-emacs)
+
+ ;; Define M-d as a prefix key in EXWM mode
+ (define-key exwm-mode-map (kbd "M-d") nil)
+
+ ;; Dired keybindings under M-d for EXWM
+ (define-key exwm-mode-map (kbd "M-d D") 'dired) ;; Open Dired
+ (define-key exwm-mode-map (kbd "M-d d") 'counsel-linux-app) 
+ (define-key exwm-mode-map (kbd "M-d j") 'dired-jump) ;; Jump to current directory in Dired
+ (define-key exwm-mode-map (kbd "M-d n") 'neotree-dir) ;; Open directory in Neotree
+ (define-key exwm-mode-map (kbd "M-d p") 'peep-dired) ;; Peep Dired preview
+
+(global-set-key [escape] 'keyboard-escape-quit)
+
+;; Increase font size for minibuffer prompt
+(set-face-attribute 'minibuffer-prompt nil
+                    :font "FiraCode Nerd Font"
+                    :height 200)
+
+(use-package neotree
+  :ensure t
+  :config
+  (setq neo-smart-open t
+        neo-show-hidden-files t
+        neo-window-width 55
+        neo-window-fixed-size nil
+        inhibit-compacting-font-caches t
+        projectile-switch-project-action 'neotree-projectile-action) 
+        ;; truncate long file names in neotree
+        (add-hook 'neo-after-create-hook
+           #'(lambda (_)
+               (with-current-buffer (get-buffer neo-buffer-name)
+                 (setq truncate-lines t)
+                 (setq word-wrap nil)
+                 (make-local-variable 'auto-hscroll-mode)
+                 (setq auto-hscroll-mode nil)))))
+
+;; show hidden files
+
+(use-package python-mode
+  :ensure t
+  :mode "\\.py\\'"
+  :interpreter "python3")
+
+(use-package toc-org
+  :ensure t
+  :commands toc-org-enable
+  :init (add-hook 'org-mode-hook 'toc-org-enable))
+
+(add-hook 'org-mode-hook 'org-indent-mode)
+
+(use-package org-bullets
+  :ensure t)
+(add-hook 'org-mode-hook (lambda () (org-bullets-mode 1)))
+
+(electric-indent-mode -1)
+
+(require 'org-tempo)
+
+(global-set-key (kbd "C-=") 'text-scale-increase)
+(global-set-key (kbd "C--") 'text-scale-decrease)
+(global-set-key (kbd "<C-wheel-up>") 'text-scale-increase)
+(global-set-key (kbd "<C-wheel-down>") 'text-scale-decrease)
+
+(use-package sudo-edit
+  :ensure t
+  :config
+    (dt/leader-keys
+      "fu" '(sudo-edit-find-file :wk "Sudo find file")
+      "fU" '(sudo-edit :wk "Sudo edit file")))
+
+(start-process "picom" nil "picom")
+
+(add-to-list 'default-frame-alist '(alpha-background . 60)) ; For all new frames henceforth
+(set-frame-parameter (selected-frame) 'alpha '(90 . 90))
+(add-to-list 'default-frame-alist '(alpha . (90 . 90)))
+
+(use-package vterm)
+(use-package vterm-toggle
+  :after vterm)
+
+(use-package which-key
+:ensure t
+:init
+  (which-key-mode 1)
+:config
+(setq which-key-side-window-location 'bottom
+        which-key-sort-order #'which-key-key-order-alpha
+        which-key-sort-uppercase-first nil
+        which-key-add-column-padding 1
+        which-key-max-display-columns nil
+        which-key-min-display-lines 6
+        which-key-side-window-slot -10
+        which-key-side-window-max-height 0.25
+        which-key-idle-delay 0.8
+        which-key-max-description-length 25
+        which-key-allow-imprecise-window-fit nil
+        which-key-separator " → " ))
