@@ -8,7 +8,6 @@
   - [[#some-repo][some repo]]
 - [[#backups][BACKUPS]]
 - [[#buffer-move][BUFFER-MOVE]]
-- [[#company][COMPANY]]
 - [[#dashboard][DASHBOARD]]
 - [[#disable-menuscrool-and-tab-bar-and-adding-line-number][DISABLE MENU,SCROOL AND TAB BAR AND ADDING LINE NUMBER]]
 - [[#doom-modeline-and-themes][DOOM MODELINE AND THEMES]]
@@ -20,8 +19,12 @@
   - [[#exwm-main][EXWM MAIN]]
   - [[#exwm-display][EXWM DISPLAY]]
   - [[#exwm-extra-settings][EXWM EXTRA SETTINGS]]
-- [[#flycheck][FLYCHECK]]
 - [[#general-keybindings][GENERAL KEYBINDINGS]]
+- [[#ide-for-coding][IDE (FOR CODING)]]
+  - [[#company-mode][COMPANY MODE]]
+  - [[#company-box][COMPANY-BOX]]
+  - [[#flycheck][FLYCHECK]]
+  - [[#lsp-all-modes][LSP ALL MODES]]
 - [[#icons-and-fonts][ICONS AND FONTS]]
 - [[#ivy-counsel][IVY (COUNSEL)]]
 - [[#ivy-post-frame][IVY POST FRAME]]
@@ -31,7 +34,6 @@
 - [[#minibuffer-escape][MINIBUFFER ESCAPE]]
 - [[#minibuffer-promt-incrise][MINIBUFFER PROMT INCRISE]]
 - [[#neotree][NEOTREE]]
-- [[#language-support][LANGUAGE SUPPORT]]
 - [[#org-mode][ORG MODE]]
 - [[#zooming-inout][Zooming In/Out]]
 - [[#sudo-edit][SUDO EDIT]]
@@ -81,6 +83,7 @@
 (add-hook 'after-init-hook #'elpaca-process-queues)
 (elpaca `(,@elpaca-order))
 #+end_src
+
 ** some repo 
 #+begin_src emacs-lisp
 (require 'package)
@@ -89,7 +92,6 @@
         ("melpa" . "https://melpa.org/packages/")
         ("org" . "https://orgmode.org/elpa/")))
 (package-initialize)
-;;(package-refresh-contents)
 #+end_src
 * BACKUPS
 #+begin_src emacs-lisp
@@ -167,33 +169,6 @@ one, an error is signaled."
       (set-window-buffer other-win buf-this-buf)
       (select-window other-win))))
 #+end_src
-* COMPANY
-#+begin_src emacs-lisp
-(use-package company
-  :ensure t
-  :defer 2
-  :diminish
-  :after lsp-mode
-  :hook (prog-mode . company-mode)
-  :bind (:map company-active-map
-         ("<tab>" . company-complete-selection))
-        (:map lsp-mode-map
-         ("<tab>" . company-indent-or-complete-common))
-
-  :custom
-  (company-begin-commands '(self-insert-command))
-  (company-minimum-prefix-length 2)
-  (company-show-numbers t)
-  (company-tooltip-align-annotations 't)
-  (global-company-mode t))
-
-
-(use-package company-box
-  :ensure t
-  :after company
-  :diminish
-  :hook (company-mode . company-box-mode))
-#+end_src
 * DASHBOARD
 #+begin_src emacs-lisp
 (use-package dashboard
@@ -204,7 +179,7 @@ one, an error is signaled."
 (setq dashboard-set-file-icons t)
 (setq dashboard-banner-logo-title "NOTHING IS HERE")
 ;;(setq dashboard-startup-banner 'logo) ;; use standard emacs logo as banner
-(setq dashboard-startup-banner "/home/nothing/Downloads/emacs-dash.png")  ;; use custom image as banner
+(setq dashboard-startup-banner "/home/nothing/Pictures/555.png")  ;; use custom image as banner
 (setq dashboard-center-content nil) ;; set to 't' for centered content
 (setq dashboard-items '((recents . 5)
                         (agenda . 5 )
@@ -259,6 +234,9 @@ one, an error is signaled."
       doom-themes-enable-italic t)) ; if nil, italics is universally disabled
 
 (load-theme 'doom-one t)
+(setq doom-modeline-display-cpu t)
+
+
 #+end_src
 * DIMINISH
 This package implements hiding or abbreviation of the modeline displays (lighters) of minor-modes.  With this package installed, you can add ‘:diminish’ to any use-package block to hide that particular mode in the modeline.
@@ -268,7 +246,6 @@ This package implements hiding or abbreviation of the modeline displays (lighter
 
 
 #+end_src
-
 * DIRED
 #+begin_src emacs-lisp
 (use-package dired-open
@@ -276,8 +253,10 @@ This package implements hiding or abbreviation of the modeline displays (lighter
   :config
   (setq dired-open-extensions '(("gif" . "sxiv")
                                 ("jpg" . "sxiv")
+				("pdf" . "okular")
                                 ("png" . "sxiv")
                                 ("mkv" . "vlc")
+				(".py" . "emacs")
                                 ("mp4" . "vlc"))))
 
 (use-package peep-dired
@@ -293,6 +272,7 @@ This package implements hiding or abbreviation of the modeline displays (lighter
 
 ;;(add-hook 'peep-dired-hook 'evil-normalize-keymaps)
 #+end_src
+
 
 * Evil Mode
 #+begin_src emacs-lisp
@@ -359,9 +339,12 @@ This package implements hiding or abbreviation of the modeline displays (lighter
                         (interactive)
                         (exwm-workspace-switch-create ,i))))
                   (number-sequence 0 9))))
+
+(define-key exwm-mode-map [?\C-q] 'exwm-input-send-next-key)
+
 ;; Enable EXWM
 (exwm-enable)
-
+()
 (add-hook 'exwm-manage-finish-hook
           (lambda ()
             (when (and exwm-class-name
@@ -370,6 +353,9 @@ This package implements hiding or abbreviation of the modeline displays (lighter
 
 (require 'exwm-systemtray)
 (exwm-systemtray-mode 1)
+(require 'exwm-randr)
+(exwm-randr-mode 1)
+
 #+end_src
 ** EXWM DISPLAY 
 #+begin_src emacs-lisp
@@ -414,27 +400,44 @@ This package implements hiding or abbreviation of the modeline displays (lighter
 (add-to-list 'default-frame-alist '(fullscreen . maximized))
 
 
-(setq exwm-workspace-show-all-buffers t)
 (setq exwm-workspace-warp-cursor t)
 (setq mouse-autoselect-window t
       focus-follows-mouse t)
 
-(display-battery-mode 1) ;; ব্যাটারির মতো
-(display-time-mode 1) ;; টাইম দেখাবে
-(setq display-time-format "%Y-%m-%d %H:%M") ;; টাইমের পাশে "Network" লিখা
-(start-process "nm-applet" nil "nm-applet")
-(start-process "feh" nil "feh" "--bg-center" "/home/nothing/Pictures/wallpapers/Anime-Girl-Night-Sky.jpg")
-(tab-bar-mode 1)
+(display-battery-mode 1) ;;Show the battery
+;; (setq display-time-day-and-date t)
+(display-time-mode 1) ;; Show Time
+(setq display-time-format "%H:%M") ;; Time Formate 
+(start-process "nm-applet" nil "nm-applet") ;; Starting Wireless conncetion 
+(start-process "feh" nil "feh" "--bg-center" "/home/nothing/Downloads/Telegram Desktop/dack.png") ;; Background
+;;TOUCHPAD SETTINGS
+(start-process-shell-command "touchpad-fix" nil "~/.config/exwm-touchpad-fix.sh")
+
+
+;; (tab-bar-mode 1)
+
+;; Exwm all buffer show and move
+
+
+#+end_src
+*** EXWM BRIGHTNESS CONTROL
+#+begin_src emacs-lisp
+(defun brightness-increase ()
+  (interactive)
+  (start-process-shell-command "brightness up" nil "brightnessctl s +10%"))
+
+(defun brightness-decrease ()
+  (interactive)
+  (start-process-shell-command "brightness down" nil "brightnessctl s 10%-"))
+(global-set-key (kbd "<XF86MonBrightnessUp>") 'brightness-increase)
+(global-set-key (kbd "<XF86MonBrightnessDown>") 'brightness-decrease)
+;;TOUCHPADCON:N
+(start-process-shell-command "touchpad-fix" nil "~/.config/exwm-touchpad-fix.sh")
+
+
 #+end_src
 
-* FLYCHECK
-#+begin_src emacs-lisp
-(use-package flycheck
-  :ensure t
-  :defer t
-  :diminish
-  :init (global-flycheck-mode))
-#+end_src
+
 
 * GENERAL KEYBINDINGS
 
@@ -643,7 +646,82 @@ This package implements hiding or abbreviation of the modeline displays (lighter
   
  )
 #+end_src
+* IDE (FOR CODING)
+** COMPANY MODE
+#+begin_src emacs-lisp
+(use-package company
+  :after elpaca
+  :ensure t
+  :diminish
+  :hook (prog-mode . company-mode)
+  :bind (:map company-active-map
+              ("<tab>" . company-complete-selection))
+  :custom
+  (company-minimum-prefix-length 2)
+  (company-idle-delay 0.0)
+  (company-show-numbers t)
+  (company-tooltip-align-annotations t))
+#+end_src
+** COMPANY-BOX
+#+begin_src emacs-lisp
+(use-package company-box
+  :ensure t
+  :after company
+  :diminish
+  :hook (company-mode . company-box-mode))
+#+end_src
+** FLYCHECK
+#+begin_src emacs-lisp
+(use-package flycheck
+  :ensure t
+  :defer t
+  :diminish
+  :init (global-flycheck-mode))
+#+end_src
+** LSP ALL MODES
+#+begin_src emacs-lisp
+;; ========== LSP Mode ==========
+(use-package lsp-mode
+  :commands lsp
+  :hook ((python-mode . lsp)
+         (c-mode . lsp)
+         (c++-mode . lsp)
+         (js-mode . lsp)
+         (typescript-mode . lsp)
+         (go-mode . lsp)
+         (rust-mode . lsp))
+  :custom
+  (lsp-pyright-typechecking-mode "basic")
+  (lsp-enable-symbol-highlighting t)
+  (lsp-prefer-flymake nil))
+  ;; (lsp-headerline-breadcrumb-enable 0)
+;; ========== LSP UI ==========
+(use-package lsp-ui
+  :ensure t
+  :after lsp-mode
+  :hook (lsp-mode . lsp-ui-mode)
+  :custom
+  (lsp-ui-doc-enable t)
+  (lsp-ui-doc-position 'bottom)
+  (lsp-ui-sideline-enable t)
+  (lsp-ui-sideline-show-code-actions t))
 
+;; ========== Language Specific Mode Example (Python) ==========
+
+(use-package python-mode
+  :hook (python-mode . lsp)
+  :custom
+  (python-shell-interpreter "python3"))
+;; ========== Enable Global Company Mode ==========
+(add-hook 'after-init-hook 'global-company-mode)
+
+(use-package lsp-pyright
+  :ensure t
+  :after lsp-mode
+  :hook (python-mode . (lambda ()
+                         (require 'lsp-pyright)
+                         (lsp))))
+#+end_src
 * ICONS AND FONTS
 
 #+begin_src emacs-lisp
@@ -752,62 +830,63 @@ Ivy-rich allows us to add descriptions alongside the commands in M-x.
 * KEYBINDING
 ** FOR EMACS
 #+begin_src emacs-lisp
- ;; Define M-a as a prefix key BUFFERS 
-  (define-key global-map (kbd "M-a") nil)  ;; Start defining a prefix for M-a
+;; Define M-a as a prefix key BUFFERS 
+ (define-key global-map (kbd "M-a") nil)  ;; Start defining a prefix for M-a
 
-  ;; Bookmarks and Buffers keybindings
-  ;;(define-key global-map (kbd "M-a b") 'switch-to-buffer)
-  (define-key global-map (kbd "M-a i") 'exwm-workspace-switch-to-buffer) ;; Uncomment if needed
-  (define-key global-map (kbd "M-a w") 'exwm-workspace-switch ) 
-  (define-key global-map (kbd "M-a c") 'clone-indirect-buffer)
-  (define-key global-map (kbd "M-a C") 'clone-indirect-buffer-other-window)
-  (define-key global-map (kbd "M-a d") 'bookmark-delete)
-  ;;(define-key global-map (kbd "M-a i") 'ibuffer)
-  (define-key global-map (kbd "M-a k") 'kill-buffer-and-window)
-  (define-key global-map (kbd "M-a K") 'kill-some-buffers)
-  (define-key global-map (kbd "M-a l") 'list-bookmarks)
-  (define-key global-map (kbd "M-a m") 'bookmark-set)
-  (define-key global-map (kbd "M-a n") 'next-buffer)
-  (define-key global-map (kbd "M-a p") 'previous-buffer)
-  (define-key global-map (kbd "M-a r") 'revert-buffer)
-  (define-key global-map (kbd "M-a R") 'rename-buffer)
-  (define-key global-map (kbd "M-a s") 'basic-save-buffer)
-  (define-key global-map (kbd "M-a S") 'save-some-buffers)
-  ;;(define-key global-map (kbd "M-a w") 'bookmark-save)
+ ;; Bookmarks and Buffers keybindings
+ ;;(define-key global-map (kbd "M-a b") 'switch-to-buffer)
+ (define-key global-map (kbd "M-a i") 'exwm-workspace-switch-to-buffer) ;; Uncomment if needed
+ (define-key global-map (kbd "M-a w") 'exwm-workspace-switch ) 
+ (define-key global-map (kbd "M-a c") 'clone-indirect-buffer)
+ (define-key global-map (kbd "M-a C") 'clone-indirect-buffer-other-window)
+ (define-key global-map (kbd "M-a d") 'bookmark-delete)
+ ;;(define-key global-map (kbd "M-a i") 'ibuffer)
+ (define-key global-map (kbd "M-a k") 'kill-buffer-and-window)
+ (define-key global-map (kbd "M-a K") 'kill-some-buffers)
+ (define-key global-map (kbd "M-a l") 'list-bookmarks)
+ (define-key global-map (kbd "M-a m") 'bookmark-set)
+ (define-key global-map (kbd "M-a n") 'next-buffer)
+ (define-key global-map (kbd "M-a p") 'previous-buffer)
+ (define-key global-map (kbd "M-a r") 'revert-buffer)
+ (define-key global-map (kbd "M-a R") 'rename-buffer)
+ (define-key global-map (kbd "M-a s") 'basic-save-buffer)
+ (define-key global-map (kbd "M-a S") 'save-some-buffers)
+ ;;(define-key global-map (kbd "M-a w") 'bookmark-save)
 
-  ;; Define M-w as a prefix key for WINDOWS
-  (define-key global-map (kbd "M-w") nil)  ;; Start defining a prefix for s-w
-  ;; Window management keybindings
-  (define-key global-map (kbd "M-w c") 'evil-window-delete)
-  (define-key global-map (kbd "M-w n") 'evil-window-new)
-  (define-key global-map (kbd "M-w s") 'evil-window-split)
-  (define-key global-map (kbd "M-w v") 'evil-window-vsplit)
+ ;; Define M-w as a prefix key for WINDOWS
+ (define-key global-map (kbd "M-w") nil)  ;; Start defining a prefix for s-w
+ ;; Window management keybindings
+ (define-key global-map (kbd "M-w c") 'evil-window-delete)
+ (define-key global-map (kbd "M-w n") 'evil-window-new)
+ (define-key global-map (kbd "M-w s") 'evil-window-split)
+ (define-key global-map (kbd "M-w v") 'evil-window-vsplit)
 
-  ;; Window motions
-  (define-key global-map (kbd "M-w h") 'evil-window-left)
-  (define-key global-map (kbd "M-w j") 'evil-window-down)
-  (define-key global-map (kbd "M-w k") 'evil-window-up)
-  (define-key global-map (kbd "M-w l") 'evil-window-right)
-  (define-key global-map (kbd "M-w w") 'evil-window-next)
-  (define-key global-map (kbd "M-w m") 'save-buffers-kill-emacs)
-  ;; Move windows
-  (define-key global-map (kbd "M-w H") 'buf-move-left)
-  (define-key global-map (kbd "M-w J") 'buf-move-down)
-  (define-key global-map (kbd "M-w K") 'buf-move-up)
-  (define-key global-map (kbd "M-w L") 'buf-move-right)
+ ;; Window motions
+ (define-key global-map (kbd "M-w h") 'evil-window-left)
+ (define-key global-map (kbd "M-w j") 'evil-window-down)
+ (define-key global-map (kbd "M-w k") 'evil-window-up)
+ (define-key global-map (kbd "M-w l") 'evil-window-right)
+ (define-key global-map (kbd "M-w w") 'evil-window-next)
+ (define-key global-map (kbd "M-w m") 'save-buffers-kill-emacs)
+ ;; Move windows
+ (define-key global-map (kbd "M-w H") 'buf-move-left)
+ (define-key global-map (kbd "M-w J") 'buf-move-down)
+ (define-key global-map (kbd "M-w K") 'buf-move-up)
+ (define-key global-map (kbd "M-w L") 'buf-move-right)
 
-  ;; Define M-d as a prefix key in global-map
-  (define-key global-map (kbd "M-d") nil)
+ ;; Define M-d as a prefix key in global-map
+ (define-key global-map (kbd "M-d") nil)
 
-  ;; Dired keybindings under M-d
-  (define-key global-map (kbd "M-d D") 'dired) ;; Open Dired
-  (define-key global-map (kbd "M-d d") 'counsel-linux-app) 
-  (define-key global-map (kbd "M-d j") 'dired-jump) ;; Jump to current directory in Dired
-  (define-key global-map (kbd "M-d n") 'neotree-dir) ;; Open directory in Neotree
-  (define-key global-map (kbd "M-d p") 'peep-dired) ;; Peep Dired preview
+ ;; Dired keybindings under M-d
+ (define-key global-map (kbd "M-d D") 'dired) ;; Open Dired
+ (define-key global-map (kbd "M-d d") 'counsel-linux-app) 
+ (define-key global-map (kbd "M-d j") 'dired-jump) ;; Jump to current directory in Dired
+ (define-key global-map (kbd "M-d n") 'neotree-dir) ;; Open directory in Neotree
+ (define-key global-map (kbd "M-d p") 'peep-dired) ;; Peep Dired preview
+ (define-key global-map (kbd "M-d x") 'kill-emacs) ;; Kill emacs
 #+end_src
 ** FOR EXWM 
-#+begin_src 
+#+begin_src emacs-lisp
  ;; Define M-a as a prefix key in exwm-mode-map
   ;; Define M-a as a prefix key in exwm-mode-map
   (define-key exwm-mode-map (kbd "M-a") nil)  ;; Start defining a prefix for M-a in EXWM
@@ -860,6 +939,8 @@ Ivy-rich allows us to add descriptions alongside the commands in M-x.
   (define-key exwm-mode-map (kbd "M-d j") 'dired-jump) ;; Jump to current directory in Dired
   (define-key exwm-mode-map (kbd "M-d n") 'neotree-dir) ;; Open directory in Neotree
   (define-key exwm-mode-map (kbd "M-d p") 'peep-dired) ;; Peep Dired preview
+(define-key exwm-mode-map (kbd "<XF86MonBrightnessUp>") 'brightness-increase)
+(global-set-key (kbd "<XF86MonBrightnessDown>") 'brightness-decrease)
 
 #+end_src
 * MINIBUFFER ESCAPE
@@ -898,14 +979,7 @@ Ivy-rich allows us to add descriptions alongside the commands in M-x.
 
 ;; show hidden files
 #+end_src
-* LANGUAGE SUPPORT
-#+begin_src emacs-lisp
-(use-package python-mode
-  :ensure t
-  :mode "\\.py\\'"
-  :interpreter "python3")
 
-#+end_src
 * ORG MODE
 #+begin_src emacs-lisp
 (use-package toc-org
@@ -949,7 +1023,7 @@ You can use the bindings CTRL plus =/- for zooming in/out.  You can also use CTR
 #+begin_src emacs-lisp
 (start-process "picom" nil "picom")
 
-(add-to-list 'default-frame-alist '(alpha-background . 90)) ; For all new frames henceforth
+(add-to-list 'default-frame-alist '(alpha-background . 80)) ; For all new frames henceforth
 (set-frame-parameter (selected-frame) 'alpha '(90 . 90))
 (add-to-list 'default-frame-alist '(alpha . (90 . 90)))
 #+end_src
